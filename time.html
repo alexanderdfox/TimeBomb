@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Signal Escape Game - Music Oscillator</title>
+
+<style>
+body {
+  font-family: monospace;
+  background: #111;
+  color: #0f0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2rem;
+}
+
+h1 { margin-bottom: 1rem; }
+
+.panel {
+  border: 1px solid #0f0;
+  padding: 1rem;
+  margin: 1rem;
+  width: 320px;
+  text-align: center;
+}
+
+button {
+  padding: 0.5rem 1rem;
+  margin: 0.5rem;
+  background: #222;
+  color: #0f0;
+  border: 1px solid #0f0;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #0f0;
+  color: #111;
+}
+
+.log {
+  background: #000;
+  border: 1px solid #0f0;
+  padding: 1rem;
+  width: 90%;
+  max-width: 600px;
+  height: 200px;
+  overflow-y: auto;
+}
+
+.score {
+  font-size: 1.2rem;
+  margin-top: 1rem;
+}
+</style>
+
+</head>
+
+<body>
+
+<h1>🎵 Signal Escape Game</h1>
+
+<div class="panel">
+  <h2>Entry Diode</h2>
+  <button id="send">Send Signal</button>
+  <p id="entryStatus">Idle</p>
+</div>
+
+<div class="panel">
+  <h2>Bidirectional</h2>
+  <p>A-side: <span id="aSide">-</span></p>
+  <p>B-side: <span id="bSide">-</span></p>
+</div>
+
+<div class="score">Score: <span id="score">0</span></div>
+
+<div class="log" id="log"></div>
+
+<script>
+// ===== LOG =====
+const logEl = document.getElementById("log");
+function log(msg) {
+  logEl.innerHTML += msg + "<br>";
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+// ===== AUDIO =====
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+// simple melody loop (your oscillator)
+const melody = [
+  261.63, 293.66, 329.63, 392.00,
+  349.23, 329.63, 293.66, 261.63
+];
+
+let step = 0;
+
+// play tone
+function play(freq, duration = 0.2, volume = 0.1) {
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+
+  osc.frequency.value = freq;
+  osc.type = "sine";
+
+  gain.gain.value = volume;
+
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+
+  osc.start();
+  osc.stop(audioCtx.currentTime + duration);
+}
+
+// ===== DIODE =====
+const entryDiode = {
+  locked: false,
+  forward() {
+	if (!this.locked) {
+	  this.locked = true;
+	  setTimeout(() => this.locked = false, 2000);
+	  return true;
+	}
+	return false;
+  }
+};
+
+// ===== BIDIRECTIONAL =====
+const bidirectional = {
+  a: [],
+  b: [],
+  tick() {
+	this.a.push("⚡");
+	this.b.push("⚡");
+  },
+  readA() { return this.a.shift() || "-"; },
+  readB() { return this.b.shift() || "-"; }
+};
+
+// ===== SCORE =====
+let score = 0;
+const scoreEl = document.getElementById("score");
+
+// ===== OSCILLATOR (SONG LOOP) =====
+setInterval(() => {
+  const note = melody[step];
+
+  play(note);
+
+  bidirectional.tick();
+
+  document.getElementById("aSide").textContent = bidirectional.readA();
+  document.getElementById("bSide").textContent = bidirectional.readB();
+
+  log("tick → " + note + "Hz");
+
+  step = (step + 1) % melody.length;
+}, 350);
+
+// ===== ENTRY =====
+document.getElementById("send").onclick = async () => {
+  await audioCtx.resume(); // unlock audio
+
+  const status = document.getElementById("entryStatus");
+
+  if (entryDiode.forward()) {
+	status.textContent = "Passed";
+	log("entry → passed");
+
+	play(523.25, 0.15, 0.2); // reward tone
+
+	score++;
+  } else {
+	status.textContent = "Blocked";
+	log("entry → blocked");
+
+	play(130.81, 0.2, 0.2); // fail tone
+
+	score = Math.max(0, score - 1);
+  }
+
+  scoreEl.textContent = score;
+};
+</script>
+
+</body>
+</html>
