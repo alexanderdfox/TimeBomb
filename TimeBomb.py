@@ -5,22 +5,24 @@ app = Flask(__name__)
 
 # === Circuit state ===
 circuit = {
-	"entry_diodes": {"locked": False, "last_signal": None},
-	"bidirectional": {"a": None, "b": None},
-	"oscillator_tick": False,
-	"tick_count": 0
+    "entry_diodes": {"last_click": 0, "last_signal": None},
+    "bidirectional": {"a": None, "b": None},
+    "oscillator_tick": False,
+    "tick_count": 0,
+    "last_osc_tick": time.time()
 }
 
-# Toggle oscillator (simulate ticking)
+# Oscillator: always-on, toggles tick every second
 def tick_oscillator():
-	circuit["oscillator_tick"] = not circuit["oscillator_tick"]
-	circuit["tick_count"] += 1
-	# Bidirectional diodes update
-	signal = "tick" if circuit["oscillator_tick"] else None
-	circuit["bidirectional"]["a"] = signal
-	circuit["bidirectional"]["b"] = signal
+    now = time.time()
+    if now - circuit["last_osc_tick"] >= 1:  # 1-second tick
+        circuit["oscillator_tick"] = not circuit["oscillator_tick"]
+        circuit["tick_count"] += 1
+        circuit["bidirectional"]["a"] = "tick" if circuit["oscillator_tick"] else None
+        circuit["bidirectional"]["b"] = "tick" if circuit["oscillator_tick"] else None
+        circuit["last_osc_tick"] = now
 
-# HTML template (no JS, pure server-rendered)
+# HTML template
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -31,7 +33,10 @@ HTML_TEMPLATE = """
   body { font-family: monospace; background: #111; color: #0f0; padding: 2rem; }
   .diode, .bidirectional, .oscillator { border: 1px solid #0f0; padding: 1rem; margin: 1rem; width: 300px; text-align: center; }
   .signal { font-weight: bold; }
+  button { background: #111; color: #0f0; border: 1px solid #0f0; padding: 0.5rem 1rem; cursor: pointer; margin: 0.5rem; }
+  button:disabled { color: #333; border-color: #333; cursor: not-allowed; }
 </style>
+<meta http-equiv="refresh" content="1">
 </head>
 <body>
 <h1>Python Diode Circuit (Server-Side)</h1>
@@ -40,19 +45,13 @@ HTML_TEMPLATE = """
   <h2>Oscillator</h2>
   <p>Tick: <span class="signal">{{ 'ON' if oscillator else 'OFF' }}</span></p>
   <p>Tick count: {{ tick_count }}</p>
-  <form method="post" action="{{ url_for('tick') }}">
-	<button type="submit">Toggle Oscillator</button>
-  </form>
 </div>
 
 <div class="diode">
   <h2>Entry Diode</h2>
-  <p>Status: <span class="signal">{{ 'Passed' if entry_pass else 'Blocked' }}</span></p>
+  <p>Status: <span class="signal">{{ entry_status }}</span></p>
   <form method="post" action="{{ url_for('entry') }}">
-	<button type="submit">Send Entry Signal</button>
-  </form>
-  <form method="post" action="{{ url_for('reset_entry') }}">
-	<button type="submit">Reset Entry Diode</button>
+    <button type="submit" {{ 'disabled' if not can_click else '' }}>Send Entry Signal</button>
   </form>
 </div>
 
@@ -66,35 +65,29 @@ HTML_TEMPLATE = """
 </html>
 """
 
-# === Routes ===
-
 @app.route("/")
 def index():
-	return render_template_string(
-		HTML_TEMPLATE,
-		oscillator=circuit["oscillator_tick"],
-		tick_count=circuit["tick_count"],
-		entry_pass=circuit["entry_diodes"]["last_signal"] == "entry_signal",
-		bidirectional=circuit["bidirectional"]
-	)
-
-@app.route("/tick", methods=["POST"])
-def tick():
-	tick_oscillator()
-	return redirect(url_for('index'))
+    tick_oscillator()
+    # Entry diode click allowed only every 10 seconds
+    now = time.time()
+    can_click = (now - circuit["entry_diodes"]["last_click"]) >= 10
+    entry_status = "Passed" if circuit["entry_diodes"]["last_signal"] == "entry_signal" else "Blocked"
+    return render_template_string(
+        HTML_TEMPLATE,
+        oscillator=circuit["oscillator_tick"],
+        tick_count=circuit["tick_count"],
+        bidirectional=circuit["bidirectional"],
+        entry_status=entry_status,
+        can_click=can_click
+    )
 
 @app.route("/entry", methods=["POST"])
 def entry():
-	if not circuit["entry_diodes"]["locked"]:
-		circuit["entry_diodes"]["locked"] = True
-		circuit["entry_diodes"]["last_signal"] = "entry_signal"
-	return redirect(url_for('index'))
-
-@app.route("/reset_entry", methods=["POST"])
-def reset_entry():
-	circuit["entry_diodes"]["locked"] = False
-	circuit["entry_diodes"]["last_signal"] = None
-	return redirect(url_for('index'))
+    now = time.time()
+    if (now - circuit["entry_diodes"]["last_click"]) >= 10:
+        circuit["entry_diodes"]["last_click"] = now
+        circuit["entry_diodes"]["last_signal"] = "entry_signal"
+    return redirect(url_for('index'))
 
 if __name__ == "__main__":
-	app.run(debug=True)
+    app.run(debug=True)
