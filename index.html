@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Signal Escape Game</title>
+<style>
+  body {
+	font-family: monospace;
+	background: #111;
+	color: #0f0;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	padding: 2rem;
+  }
+  .diode, .bidirectional {
+	border: 1px solid #0f0;
+	padding: 1rem;
+	margin: 1rem;
+	width: 300px;
+	text-align: center;
+  }
+  button {
+	padding: 0.5rem 1rem;
+	margin: 0.5rem;
+	background: #222;
+	color: #0f0;
+	border: 1px solid #0f0;
+	cursor: pointer;
+  }
+  button:hover {
+	background: #0f0;
+	color: #111;
+  }
+  .log {
+	background: #000;
+	color: #0f0;
+	border: 1px solid #0f0;
+	padding: 1rem;
+	width: 90%;
+	max-width: 600px;
+	height: 200px;
+	overflow-y: auto;
+	margin-top: 1rem;
+  }
+  .score {
+	margin-top: 1rem;
+	font-size: 1.2rem;
+  }
+</style>
+</head>
+<body>
+
+<h1>Signal Escape Game</h1>
+
+<div class="diode">
+  <h2>Entry Diode</h2>
+  <button id="sendEntry">Send Entry Signal</button>
+  <p id="entryStatus">Idle</p>
+</div>
+
+<div class="bidirectional">
+  <h2>Bidirectional Diodes</h2>
+  <p>A-side: <span id="aSide">-</span></p>
+  <p>B-side: <span id="bSide">-</span></p>
+</div>
+
+<div class="score">Score: <span id="score">0</span></div>
+
+<div class="log" id="log"></div>
+
+<script>
+  const logEl = document.getElementById('log');
+  const scoreEl = document.getElementById('score');
+
+  function log(msg) {
+	logEl.innerHTML += msg + "<br>";
+	logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  let score = 0;
+
+  // Entry diode
+  const entryDiode = {
+	locked: false,
+	forward(value) {
+	  if (!this.locked) {
+		this.locked = true;
+		setTimeout(() => this.reset(), 2000); // auto-unlock after 2 sec
+		return value;
+	  }
+	  return null;
+	},
+	reset() {
+	  this.locked = false;
+	}
+  };
+
+  // Bidirectional diodes
+  const bidirectional = {
+	aQueue: [],
+	bQueue: [],
+	transferAtoB(value) { this.bQueue.push(value); },
+	transferBtoA(value) { this.aQueue.push(value); },
+	receiveA() { return this.aQueue.shift() || "-"; },
+	receiveB() { return this.bQueue.shift() || "-"; }
+  };
+
+  // Oscillator
+  const oscillatorFreq = 1000; // ms
+  setInterval(() => {
+	const tick = "tick";
+	bidirectional.transferAtoB(tick);
+	bidirectional.transferBtoA(tick);
+	updateBidirectionalDisplay();
+	log("Oscillator tick");
+  }, oscillatorFreq);
+
+  function updateBidirectionalDisplay() {
+	document.getElementById("aSide").textContent = bidirectional.receiveA();
+	document.getElementById("bSide").textContent = bidirectional.receiveB();
+  }
+
+  // Entry signal button
+  document.getElementById("sendEntry").addEventListener("click", () => {
+	const signal = "entry_signal";
+	const result = entryDiode.forward(signal);
+	const statusEl = document.getElementById("entryStatus");
+	if (result) {
+	  statusEl.textContent = "Signal passed!";
+	  log("Entry diode passed signal");
+	  score += 1;
+	  scoreEl.textContent = score;
+	} else {
+	  statusEl.textContent = "Blocked!";
+	  log("Entry diode blocked signal");
+	  score = Math.max(0, score - 1);
+	  scoreEl.textContent = score;
+	}
+  });
+</script>
+</body>
+</html>
